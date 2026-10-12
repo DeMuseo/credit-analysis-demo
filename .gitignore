@@ -4,4 +4,6 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 .gradio/
-outputs/
+outputs/*
+!outputs/cookie_cats/
+!outputs/cookie_cats/**

@@ -1,0 +1,42 @@
+{
+  "n_raw": 90189,
+  "n_after_dedupe": 90189,
+  "n_duplicates_removed": 0,
+  "by_version": {
+    "gate_30": {
+      "n": 44700,
+      "retention_1": 0.4481879194630872,
+      "retention_7": 0.19020134228187918,
+      "retention_1_n": 20034,
+      "retention_7_n": 8502,
+      "mean_gamerounds": 52.45626398210291,
+      "median_gamerounds": 17.0,
+      "p99_gamerounds": 493.0,
+      "max_gamerounds": 49854
+    },
+    "gate_40": {
+      "n": 45489,
+      "retention_1": 0.44228274967574577,
+      "retention_7": 0.18200004396667327,
+      "retention_1_n": 20119,
+      "retention_7_n": 8279,
+      "mean_gamerounds": 51.29877552814966,
+      "median_gamerounds": 16.0,
+      "p99_gamerounds": 492.1200000000026,
+      "max_gamerounds": 2640
+    }
+  },
+  "d1_abs_lift_gate40_minus_gate30": -0.005905169787341458,
+  "d1_rel_lift": -0.01317565585974659,
+  "d7_abs_lift_gate40_minus_gate30": -0.008201298315205913,
+  "d7_rel_lift": -0.043119034896460164,
+  "d1_z": -1.7840862247974725,
+  "d1_pvalue_z": 0.07440965529691912,
+  "d7_z": -3.164358912748191,
+  "d7_pvalue_z": 0.0015542499756142636,
+  "d1_chi2": 3.1591007878782262,
+  "d1_pvalue_chi2": 0.07550476210309086,
+  "d7_chi2": 9.959086799559167,
+  "d7_pvalue_chi2": 0.0016005742679058301,
+  "outlier_note": "Max sum_gamerounds=49,854; P99\u2248493. A few players have extremely high rounds; charts cap at ~P99 for readability."
+}

@@ -1,6 +1,6 @@
 """
-Bilingual Consumer Credit / Drainage Analysis Portfolio Demo
-花呗风格消费信贷调研 × 引流转化探索性分析 · Gradio 作品集 Demo
+Cookie Cats Mobile Game A/B Retention Demo
+Cookie Cats 手游关卡门控 A/B 留存分析 · Gradio 作品集 Demo
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import gradio as gr
 
@@ -25,284 +26,384 @@ plt.rcParams["font.sans-serif"] = [
 ]
 plt.rcParams["axes.unicode_minus"] = False
 
-DATA_PATH = Path(__file__).resolve().parent / "data" / "huabei_style_survey.csv"
+DATA_PATH = Path(__file__).resolve().parent / "data" / "cookie_cats.csv"
 
-# Column display names (CN)
-COL_CN = {
-    "user_id": "用户ID",
-    "city": "城市",
-    "age_group": "年龄段",
-    "income_band": "收入档",
-    "channel": "引流渠道",
-    "product": "产品/活动",
-    "credit_limit": "授信额度",
-    "utilization_pct": "额度使用率%",
-    "monthly_spend": "月消费额",
-    "overdue_flag": "逾期标记",
-    "risk_tier": "风险分层",
-    "converted": "是否转化",
+PLAYTIME_BANDS = {
+    "all": (None, None),
+    "0": (0, 0),
+    "1-5": (1, 5),
+    "6-20": (6, 20),
+    "21-50": (21, 50),
+    "51-100": (51, 100),
+    "101+": (101, None),
+}
+
+BAND_LABELS_CN = {
+    "all": "全部局数",
+    "0": "0 局（未开玩）",
+    "1-5": "1–5 局",
+    "6-20": "6–20 局",
+    "21-50": "21–50 局",
+    "51-100": "51–100 局",
+    "101+": "101+ 局",
+}
+
+BAND_LABELS_EN = {
+    "all": "All playtime",
+    "0": "0 rounds (no play)",
+    "1-5": "1–5 rounds",
+    "6-20": "6–20 rounds",
+    "21-50": "21–50 rounds",
+    "51-100": "51–100 rounds",
+    "101+": "101+ rounds",
 }
 
 
 def load_data() -> pd.DataFrame:
     df = pd.read_csv(DATA_PATH)
-    # light cleaning (portfolio demo of pandas hygiene)
-    df = df.drop_duplicates(subset=["user_id"])
-    df["overdue_flag"] = df["overdue_flag"].astype(int)
-    df["converted"] = df["converted"].astype(int)
-    df["utilization_pct"] = pd.to_numeric(df["utilization_pct"], errors="coerce").clip(0, 100)
-    df["credit_limit"] = pd.to_numeric(df["credit_limit"], errors="coerce")
-    df["monthly_spend"] = pd.to_numeric(df["monthly_spend"], errors="coerce")
-    df = df.dropna(subset=["city", "channel", "risk_tier"])
+    df = df.drop_duplicates(subset=["userid"])
+    df["retention_1"] = df["retention_1"].astype(bool)
+    df["retention_7"] = df["retention_7"].astype(bool)
+    df["version"] = df["version"].astype(str)
+    # Churn proxy: not retained on day 7
+    df["churn_proxy"] = ~df["retention_7"]
     return df
 
 
 DF = load_data()
 
 
-def overview_metrics(df: pd.DataFrame) -> str:
+def _apply_filters(
+    version: str,
+    playtime_band: str,
+) -> pd.DataFrame:
+    out = DF
+    if version and version != "all":
+        out = out[out["version"] == version]
+    lo, hi = PLAYTIME_BANDS.get(playtime_band, (None, None))
+    if lo is not None:
+        out = out[out["sum_gamerounds"] >= lo]
+    if hi is not None:
+        out = out[out["sum_gamerounds"] <= hi]
+    return out
+
+
+def _pct(series: pd.Series) -> float:
+    if len(series) == 0:
+        return float("nan")
+    return float(series.mean() * 100)
+
+
+def overview_metrics(df: pd.DataFrame, lang: str) -> str:
     n = len(df)
     if n == 0:
-        return "当前筛选无数据 / No rows under current filters."
-    overdue_rate = df["overdue_flag"].mean() * 100
-    conv_rate = df["converted"].mean() * 100
-    avg_util = df["utilization_pct"].mean()
-    avg_limit = df["credit_limit"].mean()
-    avg_spend = df["monthly_spend"].mean()
-    high_risk = (df["risk_tier"] == "高风险").mean() * 100
-    return (
-        f"### 概览指标 Overview\n"
-        f"- **样本数 Samples**: {n:,}\n"
-        f"- **逾期率 Overdue rate**: {overdue_rate:.1f}%\n"
-        f"- **转化率 Conversion rate**: {conv_rate:.1f}%\n"
-        f"- **高风险占比 High-risk share**: {high_risk:.1f}%\n"
-        f"- **平均额度使用率 Avg utilization**: {avg_util:.1f}%\n"
-        f"- **平均授信额度 Avg credit limit**: ¥{avg_limit:,.0f}\n"
-        f"- **平均月消费 Avg monthly spend**: ¥{avg_spend:,.0f}"
-    )
+        return "无匹配玩家 / No matching players." if lang == "中文" else "No matching players."
 
+    d1 = _pct(df["retention_1"])
+    d7 = _pct(df["retention_7"])
+    mean_r = float(df["sum_gamerounds"].mean())
+    med_r = float(df["sum_gamerounds"].median())
+    churn = _pct(df["churn_proxy"])
 
-def auto_insights(df: pd.DataFrame) -> str:
-    """Short Chinese auto-insight text from filtered slice."""
-    if len(df) == 0:
-        return "暂无洞察：当前筛选条件下无样本。"
-
-    lines = ["### 自动洞察 Auto Insights（中文）", ""]
-
-    # Channel conversion ranking
-    ch = (
-        df.groupby("channel")
-        .agg(n=("user_id", "count"), conv=("converted", "mean"), overdue=("overdue_flag", "mean"))
-        .query("n >= 10")
-        .sort_values("conv", ascending=False)
-    )
-    if not ch.empty:
-        best = ch.index[0]
-        worst = ch.index[-1]
-        lines.append(
-            f"1. **引流渠道**：转化率最高为「{best}」({ch.loc[best, 'conv']*100:.1f}%)，"
-            f"最低为「{worst}」({ch.loc[worst, 'conv']*100:.1f}%). "
-            f"可优先加大高效渠道投放，并对低转化渠道做素材/人群复盘。"
+    by_v = (
+        df.groupby("version")
+        .agg(
+            n=("userid", "count"),
+            d1=("retention_1", "mean"),
+            d7=("retention_7", "mean"),
+            mean_rounds=("sum_gamerounds", "mean"),
         )
-
-    # Risk vs utilization
-    util_high = df[df["utilization_pct"] >= 70]
-    if len(util_high) >= 10:
-        ov = util_high["overdue_flag"].mean() * 100
-        ov_all = df["overdue_flag"].mean() * 100
-        lines.append(
-            f"2. **额度使用率**：使用率≥70% 子群逾期率 {ov:.1f}% "
-            f"（全量 {ov_all:.1f}%）。高使用率与逾期正相关，适合作为风险预警特征。"
-        )
-
-    # City risk
-    city = (
-        df.groupby("city")
-        .agg(n=("user_id", "count"), overdue=("overdue_flag", "mean"))
-        .query("n >= 15")
-        .sort_values("overdue", ascending=False)
+        .reset_index()
     )
-    if not city.empty:
-        top_city = city.index[0]
-        lines.append(
-            f"3. **城市差异**：「{top_city}」逾期率相对偏高 "
-            f"({city.loc[top_city, 'overdue']*100:.1f}%, n={int(city.loc[top_city, 'n'])})，"
-            f"建议结合当地客群结构与产品渗透做分层运营。"
-        )
 
-    # Age / income cross hint
-    age = (
-        df.groupby("age_group")
-        .agg(conv=("converted", "mean"), n=("user_id", "count"))
-        .query("n >= 15")
-        .sort_values("conv", ascending=False)
-    )
-    if not age.empty:
-        a0 = age.index[0]
-        lines.append(
-            f"4. **年龄段**：「{a0}」转化相对更好 ({age.loc[a0, 'conv']*100:.1f}%)，"
-            f"可与收入档做交叉（类似 SQL `GROUP BY age_group, income_band`）细化增长策略。"
-        )
-
-    lines.append("")
-    lines.append(
-        "_方法提示：筛选 ≈ WHERE；分组指标 ≈ GROUP BY + AVG；清洗含去重、类型转换、缺失处理。_"
-    )
+    if lang == "中文":
+        lines = [
+            f"**筛选后玩家数 n** = {n:,}",
+            f"**次日留存 D1** = {d1:.2f}%　|　**七日留存 D7** = {d7:.2f}%",
+            f"**平均局数** = {mean_r:.1f}　|　**中位局数** = {med_r:.0f}",
+            f"**流失代理（非 D7）** = {churn:.2f}%",
+            "",
+            "### 分版本概览",
+        ]
+        for _, row in by_v.iterrows():
+            lines.append(
+                f"- `{row['version']}`: n={int(row['n']):,} · "
+                f"D1={row['d1']*100:.2f}% · D7={row['d7']*100:.2f}% · "
+                f"均局={row['mean_rounds']:.1f}"
+            )
+    else:
+        lines = [
+            f"**Players (filtered) n** = {n:,}",
+            f"**Day-1 retention (D1)** = {d1:.2f}%　|　**Day-7 retention (D7)** = {d7:.2f}%",
+            f"**Mean rounds** = {mean_r:.1f}　|　**Median rounds** = {med_r:.0f}",
+            f"**Churn proxy (not D7)** = {churn:.2f}%",
+            "",
+            "### By version",
+        ]
+        for _, row in by_v.iterrows():
+            lines.append(
+                f"- `{row['version']}`: n={int(row['n']):,} · "
+                f"D1={row['d1']*100:.2f}% · D7={row['d7']*100:.2f}% · "
+                f"mean rounds={row['mean_rounds']:.1f}"
+            )
     return "\n".join(lines)
 
 
-def apply_filters(
-    city: str,
-    channel: str,
-    risk_tier: str,
-    age_group: str,
-    util_min: float,
-    util_max: float,
-    overdue_only: bool,
-) -> pd.DataFrame:
-    df = DF.copy()
-    if city and city != "全部 / All":
-        df = df[df["city"] == city]
-    if channel and channel != "全部 / All":
-        df = df[df["channel"] == channel]
-    if risk_tier and risk_tier != "全部 / All":
-        df = df[df["risk_tier"] == risk_tier]
-    if age_group and age_group != "全部 / All":
-        df = df[df["age_group"] == age_group]
-    df = df[(df["utilization_pct"] >= util_min) & (df["utilization_pct"] <= util_max)]
-    if overdue_only:
-        df = df[df["overdue_flag"] == 1]
-    return df
+def auto_insights(df: pd.DataFrame, lang: str) -> str:
+    if len(df) == 0:
+        return "—"
+
+    g = (
+        DF.groupby("version")
+        .agg(d1=("retention_1", "mean"), d7=("retention_7", "mean"), n=("userid", "count"))
+    )
+    if "gate_30" not in g.index or "gate_40" not in g.index:
+        return "—"
+
+    d1_30, d1_40 = g.loc["gate_30", "d1"] * 100, g.loc["gate_40", "d1"] * 100
+    d7_30, d7_40 = g.loc["gate_30", "d7"] * 100, g.loc["gate_40", "d7"] * 100
+    delta_d1 = d1_30 - d1_40
+    delta_d7 = d7_30 - d7_40
+
+    # Playtime vs retention (full data insight)
+    bands_order = ["0", "1-5", "6-20", "21-50", "51-100", "101+"]
+    band_d7 = []
+    for b in bands_order:
+        lo, hi = PLAYTIME_BANDS[b]
+        sub = DF
+        if lo is not None:
+            sub = sub[sub["sum_gamerounds"] >= lo]
+        if hi is not None:
+            sub = sub[sub["sum_gamerounds"] <= hi]
+        if len(sub):
+            band_d7.append((b, _pct(sub["retention_7"])))
+
+    zero_share = (DF["sum_gamerounds"] == 0).mean() * 100
+
+    if lang == "中文":
+        tips = [
+            f"1. **全量对照**：gate_30 的 D1={d1_30:.2f}%、D7={d7_30:.2f}%；"
+            f"gate_40 的 D1={d1_40:.2f}%、D7={d7_40:.2f}%。",
+            f"2. **门控策略**：将首道关卡从 30 移到 40 后，D1 差 {delta_d1:+.2f} pp，"
+            f"D7 差 {delta_d7:+.2f} pp（正值表示 gate_30 更高）。"
+            "若目标是留存，实验倾向**保留 gate_30**。",
+            f"3. **开玩率**：约 {zero_share:.1f}% 玩家局数为 0；"
+            "早期漏斗（安装→首局）与门控位置同样关键。",
+            "4. **局数带与 D7**：局数越高，七日留存通常越高——"
+            + "；".join(f"{b}→{v:.1f}%" for b, v in band_d7)
+            + "。可用局数带做分层运营与召回。",
+            "5. **流失代理**：以「未 D7 留存」作 churn proxy，"
+            "适合和付费/关卡通过率一起做游戏策略看板（本 demo 仅用公开留存字段）。",
+        ]
+    else:
+        tips = [
+            f"1. **Full A/B**: gate_30 D1={d1_30:.2f}%, D7={d7_30:.2f}%; "
+            f"gate_40 D1={d1_40:.2f}%, D7={d7_40:.2f}%.",
+            f"2. **Gate strategy**: moving the first gate 30→40 shows D1 Δ {delta_d1:+.2f} pp "
+            f"and D7 Δ {delta_d7:+.2f} pp (positive = gate_30 higher). "
+            "For retention, evidence favors **keeping gate_30**.",
+            f"3. **Activation**: ~{zero_share:.1f}% of players have 0 rounds; "
+            "install→first-session funnel matters alongside gate placement.",
+            "4. **Playtime bands vs D7**: more rounds ↔ higher D7 — "
+            + "; ".join(f"{b}→{v:.1f}%" for b, v in band_d7)
+            + ". Use bands for segmented ops / re-engagement.",
+            "5. **Churn proxy**: treating non–D7 retention as churn is a simple "
+            "strategy KPI alongside monetization (this demo uses public retention fields only).",
+        ]
+    return "\n\n".join(tips)
 
 
-def chart_channel_conversion(df: pd.DataFrame):
-    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+def chart_retention_by_gate(df: pd.DataFrame, lang: str):
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
     if len(df) == 0:
         ax.text(0.5, 0.5, "No data", ha="center", va="center")
-        ax.set_axis_off()
+        ax.axis("off")
         return fig
+
     g = (
-        df.groupby("channel")
-        .agg(conversion=("converted", "mean"), n=("user_id", "count"))
-        .sort_values("conversion", ascending=True)
+        df.groupby("version")[["retention_1", "retention_7"]]
+        .mean()
+        .reindex(["gate_30", "gate_40"])
+        .dropna(how="all")
+        * 100
     )
-    ax.barh(g.index, g["conversion"] * 100, color="#3B82F6")
-    ax.set_xlabel("Conversion rate (%)")
-    ax.set_title("引流渠道转化率 / Channel conversion")
-    for i, (rate, n) in enumerate(zip(g["conversion"] * 100, g["n"])):
-        ax.text(rate + 0.3, i, f"{rate:.1f}% (n={n})", va="center", fontsize=8)
+    x = np.arange(len(g.index))
+    w = 0.35
+    ax.bar(x - w / 2, g["retention_1"], w, label="D1" if lang != "中文" else "次日 D1", color="#4C78A8")
+    ax.bar(x + w / 2, g["retention_7"], w, label="D7" if lang != "中文" else "七日 D7", color="#F58518")
+    ax.set_xticks(x)
+    ax.set_xticklabels(g.index)
+    ax.set_ylabel("%")
+    title = "留存率对比（按门控版本）" if lang == "中文" else "Retention by gate version"
+    ax.set_title(title)
+    ax.legend()
+    ax.set_ylim(0, max(50, g.values.max() * 1.25 if len(g) else 50))
+    ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
     return fig
 
 
-def chart_risk_util(df: pd.DataFrame):
-    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+def chart_rounds_dist(df: pd.DataFrame, lang: str):
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
     if len(df) == 0:
         ax.text(0.5, 0.5, "No data", ha="center", va="center")
-        ax.set_axis_off()
+        ax.axis("off")
         return fig
-    order = ["低风险", "中风险", "高风险"]
-    colors = {"低风险": "#22C55E", "中风险": "#F59E0B", "高风险": "#EF4444"}
-    for tier in order:
-        sub = df[df["risk_tier"] == tier]
+
+    # Cap display at 99th percentile to avoid extreme outlier skew
+    cap = int(np.percentile(DF["sum_gamerounds"], 99))
+    for ver, color in [("gate_30", "#4C78A8"), ("gate_40", "#F58518")]:
+        sub = df[df["version"] == ver]["sum_gamerounds"]
         if len(sub) == 0:
             continue
-        ax.scatter(
-            sub["utilization_pct"],
-            sub["monthly_spend"],
-            s=18,
+        clipped = sub.clip(upper=cap)
+        ax.hist(
+            clipped,
+            bins=40,
             alpha=0.55,
-            label=tier,
-            c=colors[tier],
+            label=ver,
+            color=color,
+            density=True,
         )
-    ax.set_xlabel("Utilization %")
-    ax.set_ylabel("Monthly spend (¥)")
-    ax.set_title("风险分层 × 使用率 / 月消费 Risk vs utilization")
-    ax.legend(title="Risk tier", fontsize=8)
+    ax.set_xlabel("sum_gamerounds (capped at p99)" if lang != "中文" else "局数 sum_gamerounds（截断至 p99）")
+    ax.set_ylabel("Density" if lang != "中文" else "密度")
+    title = "游戏局数分布（分版本）" if lang == "中文" else "Game rounds distribution by version"
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
     return fig
 
 
-def chart_city_overdue(df: pd.DataFrame):
-    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+def chart_churn_proxy(df: pd.DataFrame, lang: str):
+    fig, ax = plt.subplots(figsize=(7.2, 4.2))
     if len(df) == 0:
         ax.text(0.5, 0.5, "No data", ha="center", va="center")
-        ax.set_axis_off()
+        ax.axis("off")
         return fig
-    g = (
-        df.groupby("city")
-        .agg(overdue_rate=("overdue_flag", "mean"), n=("user_id", "count"))
-        .sort_values("overdue_rate", ascending=False)
+
+    # Churn proxy rate by playtime band × version
+    rows = []
+    for b in ["0", "1-5", "6-20", "21-50", "51-100", "101+"]:
+        lo, hi = PLAYTIME_BANDS[b]
+        for ver in ["gate_30", "gate_40"]:
+            sub = df[df["version"] == ver]
+            if lo is not None:
+                sub = sub[sub["sum_gamerounds"] >= lo]
+            if hi is not None:
+                sub = sub[sub["sum_gamerounds"] <= hi]
+            if len(sub) == 0:
+                continue
+            rows.append(
+                {
+                    "band": b,
+                    "version": ver,
+                    "churn": _pct(sub["churn_proxy"]),
+                    "n": len(sub),
+                }
+            )
+    if not rows:
+        ax.text(0.5, 0.5, "No data", ha="center", va="center")
+        ax.axis("off")
+        return fig
+
+    plot_df = pd.DataFrame(rows)
+    bands = ["0", "1-5", "6-20", "21-50", "51-100", "101+"]
+    x = np.arange(len(bands))
+    w = 0.35
+    for i, (ver, color) in enumerate([("gate_30", "#4C78A8"), ("gate_40", "#F58518")]):
+        vals = []
+        for b in bands:
+            hit = plot_df[(plot_df["band"] == b) & (plot_df["version"] == ver)]
+            vals.append(float(hit["churn"].iloc[0]) if len(hit) else np.nan)
+        ax.bar(x + (i - 0.5) * w, vals, w, label=ver, color=color)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(bands)
+    ax.set_ylabel("%")
+    xlab = "局数带" if lang == "中文" else "Playtime band"
+    title = (
+        "流失代理（非 D7 留存）按局数带 × 版本"
+        if lang == "中文"
+        else "Churn proxy (not D7) by playtime band × version"
     )
-    ax.bar(g.index, g["overdue_rate"] * 100, color="#8B5CF6")
-    ax.set_ylabel("Overdue rate (%)")
-    ax.set_title("城市逾期率 / City overdue rate")
-    ax.tick_params(axis="x", rotation=30)
+    ax.set_xlabel(xlab)
+    ax.set_title(title)
+    ax.legend()
+    ax.set_ylim(0, 105)
+    ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
     return fig
 
 
-def run_analysis(
-    city, channel, risk_tier, age_group, util_min, util_max, overdue_only, sample_n
-):
-    df = apply_filters(city, channel, risk_tier, age_group, util_min, util_max, overdue_only)
-    metrics = overview_metrics(df)
-    insights = auto_insights(df)
-    display = df.rename(columns=COL_CN).head(int(sample_n))
-    fig1 = chart_channel_conversion(df)
-    fig2 = chart_risk_util(df)
-    fig3 = chart_city_overdue(df)
-    return metrics, insights, display, fig1, fig2, fig3
+def run_analysis(version: str, playtime_band: str, lang: str):
+    df = _apply_filters(version, playtime_band)
+    metrics = overview_metrics(df, lang)
+    insights = auto_insights(df, lang)
+    fig1 = chart_retention_by_gate(df, lang)
+    fig2 = chart_rounds_dist(df, lang)
+    fig3 = chart_churn_proxy(df, lang)
+    return metrics, insights, fig1, fig2, fig3
 
 
-ALL = "全部 / All"
-city_choices = [ALL] + sorted(DF["city"].unique().tolist())
-channel_choices = [ALL] + sorted(DF["channel"].unique().tolist())
-risk_choices = [ALL] + ["低风险", "中风险", "高风险"]
-age_choices = [ALL] + sorted(DF["age_group"].unique().tolist())
+def build_ui() -> gr.Blocks:
+    version_choices = [("全部 / All", "all"), ("gate_30", "gate_30"), ("gate_40", "gate_40")]
+    band_choices = [
+        (f"{BAND_LABELS_CN[k]} / {BAND_LABELS_EN[k]}", k) for k in PLAYTIME_BANDS
+    ]
 
-INTRO = """
-## 消费信贷引流分析 Demo / Consumer Credit Drainage Portfolio
+    with gr.Blocks(title="Cookie Cats A/B Retention Demo") as demo:
+        gr.Markdown(
+            """
+# Cookie Cats · 手游关卡门控 A/B 留存 Demo
+### Mobile game gate A/B retention analysis (portfolio)
 
-**主题 Theme**：消费信贷调研 × 引流转化探索性分析  
-（风格对齐花呗用户调研 / 渠道引流复盘）
+**Cookie Cats**（Tactile Entertainment）将玩家随机分到 `gate_30` / `gate_40`，
+观察局数与次日/七日留存。本 demo 面向**游戏策略 / 增长分析**岗位作品集展示。
 
-**本 Demo 展示 Demonstrates**
-- **pandas 清洗**：去重、类型转换、缺失处理、范围裁剪  
-- **SQL-ish 筛选**：城市 / 渠道 / 风险 / 年龄段 / 使用率区间 ≈ `WHERE`  
-- **可视化**：渠道转化、风险×使用率散点、城市逾期率  
-- **自动洞察**：基于当前筛选切片的中文结论摘要  
+Real Cookie Cats experiment data (~90k players) — not synthetic.
+            """
+        )
 
-数据为可复现的合成调研样本（600 行），便于本地与 Spaces 轻量启动，无需 GPU。
-"""
+        with gr.Row():
+            lang = gr.Radio(["中文", "English"], value="中文", label="语言 / Language")
+            version = gr.Dropdown(
+                choices=version_choices,
+                value="all",
+                label="版本 / Version",
+            )
+            playtime = gr.Dropdown(
+                choices=band_choices,
+                value="all",
+                label="局数带 / Playtime band",
+            )
+            btn = gr.Button("分析 / Analyze", variant="primary")
 
-with gr.Blocks(title="Credit Drainage Analysis") as demo:
-    gr.Markdown(INTRO)
-    with gr.Row():
-        with gr.Column(scale=1):
-            city = gr.Dropdown(city_choices, value=ALL, label="城市 City")
-            channel = gr.Dropdown(channel_choices, value=ALL, label="引流渠道 Channel")
-            risk_tier = gr.Dropdown(risk_choices, value=ALL, label="风险分层 Risk tier")
-            age_group = gr.Dropdown(age_choices, value=ALL, label="年龄段 Age group")
-            util_min = gr.Slider(0, 100, value=0, step=1, label="使用率下限 Util % min")
-            util_max = gr.Slider(0, 100, value=100, step=1, label="使用率上限 Util % max")
-            overdue_only = gr.Checkbox(label="仅逾期样本 Overdue only", value=False)
-            sample_n = gr.Slider(10, 100, value=30, step=5, label="表格样本行数 Table sample size")
-            btn = gr.Button("运行分析 / Run analysis", variant="primary")
-        with gr.Column(scale=2):
-            metrics_md = gr.Markdown()
-            insights_md = gr.Markdown()
+        metrics_md = gr.Markdown()
+        insights_md = gr.Markdown(label="Insights")
 
-    table = gr.Dataframe(label="筛选样本表 Filtered sample", wrap=True)
-    with gr.Row():
-        plot1 = gr.Plot(label="Chart 1")
-        plot2 = gr.Plot(label="Chart 2")
-    plot3 = gr.Plot(label="Chart 3")
+        with gr.Row():
+            plot1 = gr.Plot(label="Retention by gate")
+            plot2 = gr.Plot(label="Rounds distribution")
+        plot3 = gr.Plot(label="Churn proxy")
 
-    inputs = [city, channel, risk_tier, age_group, util_min, util_max, overdue_only, sample_n]
-    outputs = [metrics_md, insights_md, table, plot1, plot2, plot3]
-    btn.click(run_analysis, inputs=inputs, outputs=outputs)
-    demo.load(run_analysis, inputs=inputs, outputs=outputs)
+        gr.Markdown(
+            """
+---
+**Data:** `data/cookie_cats.csv` · Kaggle `mursideyarkin/mobile-games-ab-testing-cookie-cats`  
+**Attribution:** Tactile Entertainment / DataCamp-style Cookie Cats A/B tutorial dataset  
+**Stack:** Python · pandas · matplotlib · Gradio
+            """
+        )
+
+        inputs = [version, playtime, lang]
+        outputs = [metrics_md, insights_md, plot1, plot2, plot3]
+        btn.click(run_analysis, inputs=inputs, outputs=outputs)
+        demo.load(run_analysis, inputs=inputs, outputs=outputs)
+
+    return demo
+
 
 if __name__ == "__main__":
-    demo.launch()
+    app = build_ui()
+    app.launch(server_name="0.0.0.0", server_port=7860)

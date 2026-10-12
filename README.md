@@ -1,31 +1,53 @@
 ---
-title: Consumer Credit Analysis Demo
-emoji: 📊
-colorFrom: blue
-colorTo: indigo
+title: Cookie Cats A/B Retention Demo
+emoji: 🐱
+colorFrom: orange
+colorTo: purple
 sdk: gradio
 sdk_version: 5.49.1
 app_file: app.py
 pinned: false
 license: mit
-short_description: Bilingual consumer credit drainage analysis demo
+short_description: Bilingual Cookie Cats mobile game A/B retention demo
 ---
 
-# 花呗风格消费信贷调研 · 引流转化分析 Demo
+# Cookie Cats · 手游关卡门控 A/B 留存 Demo
 
-Bilingual Gradio portfolio demo for data-analyst / risk-strategy applications.
+Bilingual Gradio portfolio demo for **game strategy / growth analytics** roles.
 
-## What this is
+Interactive analysis of the classic **Cookie Cats** gate A/B experiment: players were randomly assigned to `gate_30` (control) or `gate_40` (first gate moved later). The app slices by version and playtime band, then surfaces D1/D7 retention, rounds distribution, and a simple churn proxy.
 
-An interactive analysis app built on synthetic “Huabei-style” consumer credit survey data. It shows how a data analyst would clean survey rows, slice by city / channel / risk tier, and turn the cuts into conversion and overdue metrics plus charts—useful as a portfolio piece for roles that care about drainage (获客引流), credit usage, and early risk signals.
+## What / Why
 
-## What’s inside
+Mobile games often force a wait (or IAP) at a “gate.” Moving that gate changes early progression friction and can move **day-1 / day-7 retention**. This demo shows a reproducible analyst workflow:
 
-- **Dataset**: `data/huabei_style_survey.csv` — synthetic users with city, age band, income band, acquisition channel, product, credit limit, utilization, spend, overdue flag, risk tier, and conversion.
-- **Filters**: city, channel, risk tier (and related cuts in the UI).
-- **Overview metrics**: sample size, overdue rate, conversion rate, high-risk share, average utilization / limit / spend.
-- **Charts**: channel conversion, risk mix, utilization vs spend-style views (matplotlib).
-- **UI**: bilingual CN/EN Gradio interface.
+1. Load real experiment rows  
+2. Filter by version & playtime bands  
+3. Aggregate retention & engagement  
+4. Chart gate comparison, rounds distribution, churn-by-band  
+5. Narrate short bilingual auto-insights for stakeholders  
+
+Useful as a portfolio piece for game ops, product analytics, and A/B strategy interviews.
+
+## Dataset (real experiment — not synthetic)
+
+| Item | Detail |
+|------|--------|
+| File | `data/cookie_cats.csv` (~90,189 players) |
+| Columns | `userid`, `version` (`gate_30` / `gate_40`), `sum_gamerounds`, `retention_1`, `retention_7` |
+| Kaggle | [mursideyarkin/mobile-games-ab-testing-cookie-cats](https://www.kaggle.com/datasets/mursideyarkin/mobile-games-ab-testing-cookie-cats) |
+| Mirror used here | [ryanschaub/Mobile-Games-A-B-Testing-with-Cookie-Cats](https://github.com/ryanschaub/Mobile-Games-A-B-Testing-with-Cookie-Cats) (`cookie_cats.csv` raw) |
+| Attribution | **Tactile Entertainment** (Cookie Cats). Dataset commonly used in DataCamp / Kaggle A/B tutorials. |
+
+See `data/SOURCE.md` for download notes. This is **real Cookie Cats A/B experiment data**, not synthetic survey rows.
+
+## What’s in the app
+
+- **Overview metrics**: n, D1/D7 by version, mean/median rounds, churn proxy  
+- **Filters**: version (`all` / `gate_30` / `gate_40`), playtime bands (0, 1–5, …, 101+)  
+- **Charts**: retention by gate, rounds distribution (density, p99-capped), churn proxy by band × version  
+- **Auto-insights**: short CN/EN strategy notes (gate keep vs move, activation, bands)  
+- **UI**: bilingual 中文 / English Gradio
 
 ## Stack
 
@@ -34,10 +56,14 @@ Python · pandas · matplotlib · Gradio
 ## Run locally
 
 ```bash
+cd hf-portfolio-demo   # or clone this repo
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 ```
 
-## Note on the data
+Open the local Gradio URL (default `http://127.0.0.1:7860`).
 
-Rows are **synthetic / demo-only**, styled after common consumer-credit survey fields. They are not real customer records and should not be treated as production risk or compliance evidence.
+## Repo note
+
+GitHub repo name may still be `credit-analysis-demo` (legacy). Content and branding are **Cookie Cats / mobile game A/B retention**, not consumer credit.

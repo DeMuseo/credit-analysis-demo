@@ -1,0 +1,51 @@
+{
+  "n": 100000,
+  "payers_7d": 1694,
+  "payers_45d": 1969,
+  "pay_rate_7d": 0.01694,
+  "pay_rate_45d": 0.01969,
+  "arpu_7d": 0.8086745000000001,
+  "arppu_7d": 47.73757378984652,
+  "arpu_45d": 5.146817500000001,
+  "arppu_45d": 261.39245810055866,
+  "mean_pay_count_all": 0.13758,
+  "mean_pay_count_payers": 8.121605667060212,
+  "mean_online_all": 9.7215491,
+  "mean_online_payer_7d": 122.60840023612751,
+  "mean_online_nonpayer_7d": 7.776293206925315,
+  "median_online_payer_7d": 83.17500000000001,
+  "median_online_nonpayer_7d": 4.0,
+  "stronghold_bands": {
+    "0-2": {
+      "n": 66857,
+      "payers": 313,
+      "pur": 0.004681633935115246,
+      "arpu": 0.25475477511704087
+    },
+    "3-5": {
+      "n": 21581,
+      "payers": 147,
+      "pur": 0.006811547194291274,
+      "arpu": 0.28789351744590147
+    },
+    "6-8": {
+      "n": 9300,
+      "payers": 425,
+      "pur": 0.0456989247311828,
+      "arpu": 1.8813602150537632
+    },
+    "9-11": {
+      "n": 2111,
+      "payers": 692,
+      "pur": 0.32780672666982474,
+      "arpu": 15.144452865940313
+    },
+    "12+": {
+      "n": 151,
+      "payers": 117,
+      "pur": 0.7748344370860927,
+      "arpu": 54.011192052980135
+    }
+  },
+  "disclosure": "Sample is schema-faithful stratified & calibrated to published DataCastle Tap4Fun aggregates — not the raw contest train file."
+}
